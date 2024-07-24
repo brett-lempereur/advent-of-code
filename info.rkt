@@ -10,5 +10,5 @@
 (define license 'MIT)
 
 ;; Dependencies
-(define deps '("base"))
+(define deps '("base" "http-easy" "html-parsing" "sxml"))
 (define build-deps '("rackunit-lib"))
