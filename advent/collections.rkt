@@ -6,6 +6,7 @@
 
 (require racket/contract/base)
 (require racket/generator)
+(require racket/math)
 (require racket/vector)
 
 (provide
@@ -18,7 +19,12 @@
   [vector-list-remove! (-> vector-list? integer? void)]
   [vector-list-length (-> vector-list? integer?)]
   [vector-list-capacity (-> vector-list? integer?)]
-  [in-vector-list (-> vector-list? sequence?)]))
+  [vector-list->list (-> vector-list? list?)]
+  [in-vector-list (-> vector-list? sequence?)]
+  [make-heap (->* () ((-> any/c any/c boolean?) number?) heap?)]
+  [heap-insert! (-> heap? any/c any/c void)]
+  [heap-remove! (-> heap? any/c)]
+  [heap-update! (-> heap? any/c any/c void)]))
 
 ;;;
 ;;; Growable vector list
@@ -98,3 +104,49 @@
   (in-generator
    (for ([n (in-range 0 (vector-list-size v))])
      (yield (vector-ref v n)))))
+
+;;;
+;;; Binary heap
+;;;
+
+;; A binary heap.
+;;
+;; We store separate mappings from key to container index and from key to
+;; priority to optimise priority update operations.
+(struct heap (container indices priorities comparator) #:transparent)
+
+;; Makes a new heap using the given comparator.
+(define (make-heap [comparator <] [capacity 10])
+  (heap (make-vector-list capacity) (hash-map) (hash-map) comparator))
+
+;; Inserts a key with the given priority to the heap.
+(define (heap-insert! h key priority)
+  1)
+
+;; Removes the key with the highest priority from the heap.
+(define (heap-remove! h)
+  1)
+
+;; Updates the priority of a key.
+(define (heap-update! h key priority)
+  1)
+
+;; Minifies the heap starting at the given index.
+(define (heap-minify! h i)
+  1)
+
+;; Maxifies the heap starting at the given index.
+(define (heap-maxify! h i)
+  1)
+
+;; Returns the index of the parent node of a node.
+(define (heap-parent h i)
+  (exact-floor (/ (- i 1) 2)))
+
+;; Returns the index of the left-child of a node.
+(define (heap-left-child h i)
+  (+ 1 (* 2 i)))
+
+;; Returns the index of the right-child of a node.
+(define (heap-right-child h i)
+  (+ 2 (* 2 i)))
