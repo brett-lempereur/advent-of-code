@@ -174,3 +174,18 @@
 ;; breadth-first search.
 (define (graph-uniform-heuristic u)
   0)
+
+;; Pathfinding tests.
+(module+ test
+  (define path-graph (~> (make-graph)
+                         (graph-add-edge 'a 'b)
+                         (graph-add-edge 'b 'c)
+                         (graph-add-edge 'a 'd)
+                         (graph-add-directed-edge 'c 'd)
+                         (graph-add-directed-edge 'd 'e 3)))
+  (check-equal? (graph-a* path-graph 'a 'e) (list 'd 'e))
+  (let-values ([(distances previous) (graph-dijkstra path-graph 'a)])
+    (check-equal? distances
+                  (make-hash '((a . 0) (b . 1) (c . 2) (d . 1) (e . 4))))
+    (check-equal? previous
+                  (make-hash '((a . ()) (b . a) (c . b) (d . a) (e . d))))))
