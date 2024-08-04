@@ -15,6 +15,7 @@
   [make-vector-list (->* (integer?) () #:rest (listof any/c) vector-list?)]
   [vector-list-ref (-> vector-list? integer? any/c)]
   [vector-list-add! (->* (vector-list?) () #:rest (listof any/c) void)]
+  [vector-list-set! (-> vector-list? integer? any/c void)]
   [vector-list-insert! (-> vector-list? integer? any/c void)]
   [vector-list-remove! (-> vector-list? integer? void)]
   [vector-list-length (-> vector-list? integer?)]
@@ -100,14 +101,29 @@
     (vector-set! (vector-list-elements v) i e))
   (set-vector-list-size! v new-size))
 
+;; Sets an element.
+(define (vector-list-set! v i element)
+  (when (>= i (vector-list-length v))
+    (raise-user-error
+     'vector-list-set!
+     "index is out of range\n  index: ~a\n  valid range: [0, ~a]"
+     i (- (vector-list-capacity v) 1)))
+  (vector-set! (vector-list-elements v) i element))
+
 ;; Insert an element to a list.
 (define (vector-list-insert! v i element)
+  (define size (vector-list-length v))
   (when (>= i (vector-list-length v))
     (raise-user-error
      'vector-list-insert!
      "index is out of range\n  index: ~a\n  valid range: [0, ~a]"
      i (- (vector-list-capacity v) 1)))
-  (vector-set! (vector-list-elements v) i element))
+  (vector-list-grow! v 1)
+  (when (< i (- (vector-list-length v) 1))
+    (let ([to-copy (vector-drop (vector-list-elements v) i)])
+      (vector-copy! (vector-list-elements v) (+ i 1) to-copy 0 (- size i))))
+  (vector-set! (vector-list-elements v) i element)
+  (set-vector-list-size! v (+ size 1)))
 
 ;; Removes an element from a list.
 (define (vector-list-remove! v i)
@@ -117,24 +133,32 @@
      'vector-list-remove!
      "index is out of range\n  index: ~a\n  valid range: [0, ~a]"
      i (- (vector-list-capacity v) 1)))
-  (vector-copy! elements i elements (+ i 1) (vector-list-length v))
+  (when (< i (- (vector-list-length v) 1))
+    (vector-copy! elements i elements (+ i 1) (vector-list-length v)))
   (set-vector-list-size! v (- (vector-list-length v) 1)))
 
 ;; Mutation tests.
 (module+ test
   (define mutation-list (make-vector-list 10 'a 'b 'c))
-  (define small-list (make-vector-list 2 'a 'b))
+  ; Adding multiple items to a list with sufficient capacity.
   (vector-list-add! mutation-list 'd 'e)
-  (vector-list-insert! mutation-list 0 'f)
+  (check-equal? (vector-list->list mutation-list) '(a b c d e))
+  ; Replacing an element should just replace that item.
+  (vector-list-set! mutation-list 0 'f)
+  (check-equal? (vector-list->list mutation-list) '(f b c d e))
+  ; Removing an element should retain other elements.
   (vector-list-remove! mutation-list 1)
+  (check-equal? (vector-list->list mutation-list) '(f c d e))
+  ; Inserting an element should add it and preserve other elements.
+  (vector-list-insert! mutation-list 1 'g)
+  (check-equal? (vector-list->list mutation-list) '(f g c d e))
+  ; Adding an item to an at-capacity list should extend it.
+  (define small-list (make-vector-list 2 'a 'b))
   (vector-list-add! small-list 'c)
-  (check-equal? (vector-list-length mutation-list) 4)
-  (check-equal? (vector-list-ref mutation-list 0) 'f)
-  (check-equal? (vector-list-ref mutation-list 1) 'c)
-  (check-equal? (vector-list-ref mutation-list 2) 'd)
-  (check-equal? (vector-list-ref mutation-list 3) 'e)
-  (check-equal? (vector-list-length small-list) 3)
-  (check-equal? (vector-list-ref small-list 2) 'c))
+  (check-equal? (vector-list->list small-list) '(a b c))
+  ; Removing the last element should leave the remaining elements.
+  (vector-list-remove! mutation-list 3)
+  (check-equal? (vector-list->list mutation-list) '(f g c e)))
 
 ;;;
 ;;; Conversion and iteration
@@ -160,12 +184,15 @@
 ;;; Internal
 ;;;
 
+;; The scaling factor.
+(define scaling-factor 2)
+
 ;; Adds enough capacity to a list to hold additional elements.
 (define (vector-list-grow! v [n 1])
   (define elements (vector-list-elements v))
   (define capacity (vector-list-capacity v))
   (define len (vector-list-length v))
   (when (> (+ len n) capacity)
-    (let* ([new-capacity (max (* capacity 2) (+ capacity n))]
+    (let* ([new-capacity (max (* capacity scaling-factor) (+ capacity n))]
            [new-elements (vector-extend elements new-capacity null)])
       (set-vector-list-elements! v new-elements))))
