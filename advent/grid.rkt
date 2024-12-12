@@ -7,20 +7,26 @@
 (require racket/contract/base)
 (require racket/function)
 (require racket/generator)
+(require racket/list)
 (require racket/sequence)
+(require racket/set)
 (require racket/struct)
 
 (require advent/planar/point)
 
 (provide
  (struct-out grid)
+ cardinal-neighbours
+ ordinal-neighbours
  (contract-out
   [port->grid (->* (input-port?) ((-> char? any/c)) grid?)]
   [grid-ref (-> grid? point? any/c)]
   [grid-pointf (-> grid? (-> any/c boolean?) (listof point?))]
   [grid-contains? (-> grid? point? boolean?)]
+  [in-coordinates (-> grid? (sequence/c point?))]
   [in-neighbours (->* (grid? point?) ((listof point?)) (sequence/c point?))]
-  [in-neighboursf (->* (grid? point? (-> any/c boolean?)) ((listof point?)) (sequence/c point?))]))
+  [in-neighboursf (->* (grid? point? (-> any/c boolean?)) ((listof point?)) (sequence/c point?))]
+  [in-regionf (->* (grid? point? (-> any/c boolean?)) ((listof point?)) (sequence/c point?))]))
 
 ;;;
 ;;; Data structures
@@ -54,7 +60,7 @@
   (define-values (cells mx my)
     (for/fold ([cells (hash)] [mx 0] [my 0])
               ([y (in-naturals)] [line (in-lines port)])
-      (for/fold ([cells (hash)] [mx 0] [my 0])
+      (for/fold ([cells cells] [mx mx] [my my])
                 ([x (in-naturals)] [char (in-string line)])
         (let ([p (point x y)]
               [v (cell-converter char)])
@@ -65,8 +71,11 @@
 ;;; Accessors
 ;;;
 
-;; The ordinal neighbours a cell.
-(define ordinal-neighbours (list (point 0 -1) (point 1 0) (point 0 1) (point -1 0)))
+;; The cardinal neighbours of a cell.
+(define cardinal-neighbours (list (point 0 -1) (point 1 0) (point 0 1) (point -1 0)))
+
+;; The ordinal neighbours of a cell.
+(define ordinal-neighbours (list (point -1 -1) (point 1 1) (point 1 -1) (point -1 1)))
 
 ;; Returns the value of a grid cell.
 (define (grid-ref g p)
@@ -80,7 +89,7 @@
   (for*/fold ([output '()]) ([x (in-range 0 width)] [y (in-range 0 height)])
     (let ([p (point x y)])
       (if (predicate (grid-ref g p))
-          (cons (p output))
+          (cons p output)
           output))))
 
 ;; Holds if the grid contains the given coordinate.
@@ -92,8 +101,14 @@
 ;;; Generators and iteration
 ;;;
 
+;; Returns a generator that yields the coordinates of a grid.
+(define (in-coordinates g)
+  (in-generator
+   (for* ([x (in-range 0 (grid-width g))] [y (in-range 0 (grid-height g))])
+     (yield (point x y)))))
+
 ;; Returns a generator that yields the coordinates of neighbouring cells.
-(define (in-neighbours g p [d ordinal-neighbours])
+(define (in-neighbours g p [d cardinal-neighbours])
   (in-generator
    (for ([dp d])
      (let ([np (point+ p dp)])
@@ -102,5 +117,21 @@
 
 ;; Returns a generator that yields the coordinates of neighbouring cells with a
 ;; value that satisfies the given predicate.
-(define (in-neighboursf g p predicate [d ordinal-neighbours])
+(define (in-neighboursf g p predicate [d cardinal-neighbours])
   (sequence-filter (λ (n) (predicate (grid-ref g n))) (in-neighbours g p d)))
+
+;; Returns a generator that yields the coordinates of a region that satisfies
+;; some policy.
+(define (in-regionf g p predicate [d cardinal-neighbours])
+  (define next-neighbours (λ (n) (for/set ([n (in-neighboursf g n predicate d)]) n)))
+  (in-generator
+   (let loop ([visited (set)] [unvisited (set p)])
+     (unless (set-empty? unvisited)
+       (let* ([current-point (set-first unvisited)]
+              [next-visited (set-add visited current-point)]
+              [next-unvisited
+               (set-subtract (set-union (set-remove unvisited current-point)
+                                        (next-neighbours current-point))
+                             next-visited)])
+         (yield current-point)
+         (loop next-visited next-unvisited))))))
